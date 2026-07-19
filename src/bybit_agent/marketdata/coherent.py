@@ -13,6 +13,7 @@ Fecha os dois bugs que o Claude flagrou ao vivo: `data_age` negativo e
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
@@ -53,14 +54,16 @@ async def fetch_coherent(
     *,
     timeframes: list[str],
     clock: ClockSkew,
-    local_now_ms: int,
+    local_now_ms: int | None = None,
     symbol: str = "BTCUSDT",
 ) -> CoherentMarketData:
     """Coleta book, ticker e candles de todos os timeframes concorrentemente.
 
-    O `now` corrigido é derivado do relógio local + offset do servidor.
-    Chamado APÓS a coleta pelo orquestrador — mas aqui recebemos o local_now
-    injetado para determinismo nos testes.
+    O `now` honesto é o instante em que os dados CHEGAM, não quando disparamos
+    as chamadas — a latência de rede faz o `ts` do book (gerado pelo servidor)
+    parecer no futuro se medirmos o relógio antes. Por isso capturamos o
+    relógio DEPOIS do gather. `local_now_ms` pode ser injetado para
+    determinismo nos testes.
     """
     ob_task = market.orderbook(symbol, depth=50)
     ticker_task = market.ticker(symbol)
@@ -71,11 +74,14 @@ async def fetch_coherent(
     ticker: Ticker = results[1]
     candles_by_tf = {tf: results[2 + i] for i, tf in enumerate(timeframes)}
 
+    # time_ns()//1e6 → ms inteiros, sem float (lint anti-float cobre marketdata).
+    now_local = local_now_ms if local_now_ms is not None else time.time_ns() // 1_000_000
+
     return CoherentMarketData(
         candles_by_tf=candles_by_tf,
         orderbook=ob,
         ticker=ticker,
-        corrected_now_ms=clock.corrected_now_ms(local_now_ms=local_now_ms),
+        corrected_now_ms=clock.corrected_now_ms(local_now_ms=now_local),
         clock_healthy=clock.is_healthy(),
     )
 

@@ -18,17 +18,20 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 from decimal import Decimal
 from pathlib import Path
 
 from bybit_agent.agent.client import DecisionAgent
 from bybit_agent.agent.orchestrator import ShadowOrchestrator
+from bybit_agent.agent.prefilter import prefilter
 from bybit_agent.features.snapshot import build_snapshot
+from bybit_agent.features.structure import analyze_structure
+from bybit_agent.marketdata.coherent import fetch_coherent, validate_market_data
 from bybit_agent.marketdata.rest import BybitPublicClient
 from bybit_agent.risk.policy import RiskPolicy
 
 SCHEMA_PATH = Path(__file__).parent / "contracts" / "decision_v1.json"
+_TIMEFRAMES = ["60", "15", "5"]  # maior → menor (alinhamento multi-timeframe)
 
 
 def _load_env() -> None:
@@ -42,21 +45,37 @@ def _load_env() -> None:
 
 
 async def _snapshot_only() -> None:
-    """Sem chave Anthropic: prova a conexão com a Bybit montando o snapshot."""
+    """Sem chave Anthropic: prova A1+A2 com dados reais da Bybit.
+
+    Coleta coerente multi-timeframe, valida integridade/frescor com relógio
+    corrigido, monta o snapshot enriquecido (estrutura, liquidez) e mostra o
+    veredito do pré-filtro — tudo de graça (market data é público)."""
     async with BybitPublicClient() as market:
-        candles = await market.klines(interval="5", limit=200)
-        ob = await market.orderbook(depth=50)
-        ticker = await market.ticker()
+        clock = await market.clock_skew()
+        data = await fetch_coherent(
+            market, timeframes=_TIMEFRAMES, clock=clock, symbol="BTCUSDT",
+        )
+    issues = validate_market_data(data, max_data_age_ms=10_000)
     snapshot = build_snapshot(
         symbol="BTCUSDT",
-        candles_by_tf={"5": candles},
-        orderbook=ob,
-        ticker=ticker,
-        now_ms=int(time.time() * 1000),
-        data_ts_ms=ob.ts_ms,
+        candles_by_tf=data.candles_by_tf,
+        orderbook=data.orderbook,
+        ticker=data.ticker,
+        now_ms=data.corrected_now_ms,
+        data_ts_ms=data.orderbook.ts_ms,
     )
+    snapshot["data_quality"] = {
+        "status": "CONFLICTING" if issues else "VALID",
+        "issues": [i.detail for i in issues],
+    }
     print("=== SNAPSHOT (dados reais da Bybit) ===")
     print(json.dumps(snapshot, indent=2, ensure_ascii=False))
+
+    structure = analyze_structure(data.candles_by_tf["5"])
+    gate = prefilter(snapshot, structure)
+    print(f"\n=== PRÉ-FILTRO: {'ANALISARIA' if gate.should_analyze else 'PULARIA'} ===")
+    print(f"motivo: {gate.reason}")
+    print(f"relógio: offset {clock.offset_ms}ms (saudável={clock.is_healthy()})")
     print("\nANTHROPIC_API_KEY não definida — análise do Claude pulada.")
     print("Defina a chave para rodar o ciclo completo.")
 
@@ -76,6 +95,12 @@ async def _full_cycle() -> None:
 
     print("=== SNAPSHOT ===")
     print(json.dumps(result.snapshot, indent=2, ensure_ascii=False))
+
+    if not result.analyzed:
+        print(f"\n=== PRÉ-FILTRO PULOU (sem custo): {result.skip_reason} ===")
+        print("\n(shadow mode — nenhuma ordem enviada)")
+        return
+
     print(f"\n=== DECISÃO DO CLAUDE: {result.action} ===")
     print(json.dumps(result.agent_result.decision, indent=2, ensure_ascii=False))
     print(f"\ntokens: {result.agent_result.usage}")

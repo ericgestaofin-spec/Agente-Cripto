@@ -14,7 +14,6 @@ garantia estrutural testada.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Protocol
@@ -38,6 +37,8 @@ from bybit_agent.risk.validators import AccountState
 # na v0; a curva de impacto real vem depois (achado 7 do review).
 _TAKER_FEE = Decimal("0.00055")
 _PRIMARY_TF = "5"
+# Primário primeiro (é o de decisão); os demais dão alinhamento multi-TF.
+_TIMEFRAMES = [_PRIMARY_TF, "15", "60"]
 _MAX_DATA_AGE_MS = 10_000
 
 # Issues que indicam dados corrompidos (não só velhos) → CONFLICTING.
@@ -114,12 +115,13 @@ class ShadowOrchestrator:
             clock = await self._market.clock_skew()
 
         spec = await self._market.instrument(self._symbol)
-        local_now = now_ms if now_ms is not None else int(time.time() * 1000)
 
-        # 2. Coleta COERENTE (concorrente) + frescor com relógio corrigido.
+        # 2. Coleta COERENTE multi-timeframe (concorrente). O relógio é
+        #    capturado DEPOIS do gather (dentro de fetch_coherent) — o `now`
+        #    honesto é quando os dados chegam. `now_ms` só é injetado em teste.
         data = await fetch_coherent(
-            self._market, timeframes=[_PRIMARY_TF], clock=clock,
-            local_now_ms=local_now, symbol=self._symbol,
+            self._market, timeframes=_TIMEFRAMES, clock=clock,
+            local_now_ms=now_ms, symbol=self._symbol,
         )
         ob = data.orderbook
         now = data.corrected_now_ms

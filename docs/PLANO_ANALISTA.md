@@ -141,6 +141,15 @@ Lacunas honestas (o que este plano fecha):
 Cada fase: **entregável verificável**, **testes escritos primeiro**, **critério de
 saída bloqueante**. Ordem por dependência.
 
+> **STATUS (2026-07-19): A1, A2, A3 e A4 CONCLUÍDAS.** 415 testes unit verdes,
+> lint anti-float limpo, `runtime/` e `features/structure|liquidity|prefilter`
+> a 100% de branch. Validado AO VIVO contra a Bybit: coleta coerente multi-TF,
+> `data_quality` VALID, pré-filtro e loop (com teto de custo e resiliência)
+> rodando sem gastar. Dois bugs reais pegos por prova ao vivo e corrigidos
+> (data_age negativo por captura de relógio antes do gather; last fora do book).
+> Pendências deliberadas: smoke do Postgres precisa de `docker compose up`
+> (asyncpg não instalado neste ambiente); execução/operador seguem adiados.
+
 ### Fase A1 — Fundação de dados: coerente, fresca, alinhada ao relógio
 
 **Objetivo:** o snapshot passa a ser temporalmente coerente e com frescor honesto.

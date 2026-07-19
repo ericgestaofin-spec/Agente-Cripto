@@ -341,6 +341,14 @@ def test_validate_tp_fractions_rejects_non_finite() -> None:
         validate_take_profit_fractions([Decimal("NaN")])
 
 
+def test_validate_tp_fractions_rejects_out_of_range() -> None:
+    """Validação defensiva usada pelo TradeContext: fração fora de (0,1]."""
+    from bybit_agent.risk._validation import validate_take_profit_fractions
+
+    with pytest.raises(ValueError, match=r"\(0, 1\]"):
+        validate_take_profit_fractions([Decimal("1.5")])
+
+
 def test_require_non_empty_symbol_rejects_blank() -> None:
     from bybit_agent.risk._validation import require_non_empty_symbol
 

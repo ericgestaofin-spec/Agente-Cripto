@@ -20,6 +20,7 @@ from bybit_agent.domain.instrument import InstrumentSpec
 from bybit_agent.domain.money import Price, Quantity
 from bybit_agent.risk.engine import TradeIntent, evaluate
 from bybit_agent.risk.policy import RiskPolicy
+from bybit_agent.risk.reward import TakeProfitLevel
 from bybit_agent.risk.sizing import SizingInputs, compute_size
 from bybit_agent.risk.validators import AccountState, TradeContext
 
@@ -42,8 +43,8 @@ def _intent(**over: object) -> TradeIntent:
         "decision_id": "x", "symbol": "BTCUSDT", "side": "BUY",
         "entry": Decimal("60000"), "stop": Decimal("59400"),
         "invalidation": Decimal("59500"), "liquidation": Decimal("30000"),
-        "rr_net": Decimal("2.5"), "intent_expires_at_ms": 9_999_999_999_999,
-        "take_profit_fractions": [Decimal("0.5"), Decimal("0.5")],
+        "intent_expires_at_ms": 9_999_999_999_999,
+        "take_profit_levels": (TakeProfitLevel(Decimal("61600"), Decimal("1")),),
         "is_averaging_down": False, "widens_stop": False,
     }
     base.update(over)
@@ -109,10 +110,11 @@ def test_non_finite_price_field_is_rejected(bad: str) -> None:
         _intent(entry=Decimal(bad))
 
 
-@pytest.mark.parametrize("bad", ["NaN", "Infinity"])
-def test_non_finite_rr_is_rejected(bad: str) -> None:
-    with pytest.raises(ValueError, match="finit"):
-        _intent(rr_net=Decimal(bad))
+def test_empty_take_profit_levels_is_rejected() -> None:
+    """Sem alvos não há plano de saída nem RR calculável — o modelo não
+    pode mais aprovar declarando um RR alto com TP vazio."""
+    with pytest.raises(ValueError, match="take-profit|RR"):
+        _intent(take_profit_levels=())
 
 
 def test_non_finite_equity_is_rejected() -> None:
@@ -154,31 +156,32 @@ def test_negative_equity_is_rejected() -> None:
 
 
 # ==========================================================================
-# 13 — coleções "imutáveis" agora são tuple e frações são validadas
+# 13 — take_profit_levels são TakeProfitLevel imutáveis e auto-validados
 # ==========================================================================
 
 
-def test_take_profit_fractions_is_immutable_tuple() -> None:
+def test_take_profit_levels_is_immutable_tuple() -> None:
     intent = _intent()
-    assert isinstance(intent.take_profit_fractions, tuple)
+    assert isinstance(intent.take_profit_levels, tuple)
     with pytest.raises(AttributeError):
-        intent.take_profit_fractions.append(Decimal("99"))  # type: ignore[attr-defined]
+        intent.take_profit_levels.append(  # type: ignore[attr-defined]
+            TakeProfitLevel(Decimal("62000"), Decimal("1"))
+        )
 
 
-def test_take_profit_fraction_above_one_is_rejected() -> None:
+def test_take_profit_level_fraction_above_one_is_rejected() -> None:
     with pytest.raises(ValueError, match="fração|fraction"):
-        _intent(take_profit_fractions=[Decimal("1.5")])
+        TakeProfitLevel(Decimal("61600"), Decimal("1.5"))
 
 
-def test_negative_take_profit_fraction_is_rejected() -> None:
-    """[-0.5, 1.5] somava 1 e passava — cada fração deve ser 0 < f <= 1."""
+def test_take_profit_level_zero_fraction_is_rejected() -> None:
     with pytest.raises(ValueError, match="fração|fraction"):
-        _intent(take_profit_fractions=[Decimal("-0.5"), Decimal("1.5")])
+        TakeProfitLevel(Decimal("61600"), Decimal("0"))
 
 
-def test_zero_take_profit_fraction_is_rejected() -> None:
-    with pytest.raises(ValueError, match="fração|fraction"):
-        _intent(take_profit_fractions=[Decimal("0")])
+def test_take_profit_level_non_positive_price_is_rejected() -> None:
+    with pytest.raises(ValueError, match="preço|price|positiv"):
+        TakeProfitLevel(Decimal("0"), Decimal("1"))
 
 
 # ==========================================================================

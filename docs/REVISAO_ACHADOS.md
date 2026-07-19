@@ -51,7 +51,7 @@ parser — merecem decisão explícita antes de implementar.
 
 | # | Achado | Confirmado | Ação recomendada |
 |---|---|---|---|
-| 1 | `rr_net` é declarado pelo modelo, não calculado. RR=999 sem TP aprova | ✅ | Intent traz **preços de TP**; engine calcula RR. `rr_net` do modelo vira só diagnóstico |
+| 1 | `rr_net` é declarado pelo modelo, não calculado. RR=999 sem TP aprova | ✅ | **✔ B1 (94e7fe2 + integração)** — `TradeIntent` traz `take_profit_levels` com preços; engine calcula o RR via `reward.compute_rr_net`; `model_claimed_rr_net` é só diagnóstico. TP vazio ou fraco não aprova mais. |
 | 4 | `liquidation` vem da intenção; `liq=1` faz stop parecer seguro | ✅ | Remover da intenção; engine estima internamente (risk tier); confirmar pós-fill |
 | 10 | `is_averaging_down` e `widens_stop` são autorrelatados pelo modelo | ✅ | Computar do estado real da posição, não aceitar da intenção |
 | 6 | Sizing usa preços não canonicalizados; gateway arredonda depois | analítico | Engine produz plano já alinhado a tick/step; recalcula RR/risco sobre ele |

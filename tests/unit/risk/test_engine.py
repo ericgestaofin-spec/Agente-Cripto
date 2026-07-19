@@ -16,6 +16,7 @@ from decimal import Decimal
 from bybit_agent.domain.instrument import InstrumentSpec
 from bybit_agent.risk.engine import RiskDecision, TradeIntent, evaluate
 from bybit_agent.risk.policy import RiskPolicy
+from bybit_agent.risk.reward import TakeProfitLevel
 from bybit_agent.risk.validators import AccountState
 
 
@@ -65,9 +66,10 @@ def _intent(**over: object) -> TradeIntent:
         "stop": Decimal("59400"),
         "invalidation": Decimal("59500"),
         "liquidation": Decimal("30000"),
-        "rr_net": Decimal("2.5"),
         "intent_expires_at_ms": 9_999_999_999_999,
-        "take_profit_fractions": [Decimal("0.5"), Decimal("0.5")],
+        # LONG: TP acima da entrada. Distância de risco 600; TP a 61600 dá
+        # reward ~1600, RR líquido ~2.3 (> min 2.0).
+        "take_profit_levels": (TakeProfitLevel(Decimal("61600"), Decimal("1")),),
         "is_averaging_down": False,
         "widens_stop": False,
         "order_type": "Limit",
@@ -118,6 +120,41 @@ def test_approved_decision_carries_risk_breakdown() -> None:
 # --------------------------------------------------------------------------
 # A quantidade NUNCA vem da intenção
 # --------------------------------------------------------------------------
+
+
+def test_model_cannot_inflate_rr_to_force_approval() -> None:
+    """⭐ Achado 1 do review: o RR é CALCULADO dos preços de TP. Um TP fraco
+    (perto da entrada) produz RR baixo e é rejeitado, mesmo que o modelo
+    declare um RR alto no campo diagnóstico."""
+    d = evaluate(
+        _intent(
+            # TP a apenas 60300 → reward ~300 vs risco ~672 → RR ~0.45 < 2.0
+            take_profit_levels=(TakeProfitLevel(Decimal("60300"), Decimal("1")),),
+            model_claimed_rr_net=Decimal("999"),  # mentira do modelo, ignorada
+        ),
+        _account(),
+        **_config(),
+    )
+    assert not d.approved
+    assert any(r.code == "RR_TOO_LOW" for r in d.rejections)
+
+
+def test_computed_rr_is_reported_on_approval() -> None:
+    d = evaluate(_intent(), _account(), **_config())
+    assert d.approved
+    assert d.computed_rr_net is not None
+    assert d.computed_rr_net >= Decimal("2.0")
+
+
+def test_incoherent_plan_tp_wrong_side_is_rejected() -> None:
+    """LONG com TP abaixo da entrada é plano incoerente."""
+    d = evaluate(
+        _intent(take_profit_levels=(TakeProfitLevel(Decimal("59000"), Decimal("1")),)),
+        _account(),
+        **_config(),
+    )
+    assert not d.approved
+    assert any(r.code == "INCOHERENT_PLAN" for r in d.rejections)
 
 
 def test_intent_has_no_quantity_field() -> None:
@@ -178,6 +215,8 @@ def test_short_intent_is_sized_correctly() -> None:
             stop=Decimal("60600"),
             invalidation=Decimal("60500"),
             liquidation=Decimal("90000"),
+            # SHORT: TP abaixo da entrada. reward ~1600, RR ~2.3.
+            take_profit_levels=(TakeProfitLevel(Decimal("58400"), Decimal("1")),),
         ),
         _account(),
         **_config(),

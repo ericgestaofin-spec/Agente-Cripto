@@ -86,7 +86,7 @@ def build_record(result: ShadowCycleResult, *, ts_ms: int) -> DecisionRecord:
     """
     ar = result.agent_result
     usage = dict(ar.usage) if ar is not None else {}
-    cost = _cost_from_usage(usage) if usage else Decimal("0")
+    cost = cost_of(result)
     decision_id = _decision_id(result)
 
     return DecisionRecord(
@@ -107,6 +107,14 @@ def build_record(result: ShadowCycleResult, *, ts_ms: int) -> DecisionRecord:
         cost_usd=str(cost),
         usage=usage,
     )
+
+
+def cost_of(result: ShadowCycleResult) -> Decimal:
+    """Custo em USD de um ciclo, a partir do usage do Claude. Zero se pulado."""
+    ar = result.agent_result
+    if ar is None or not ar.usage:
+        return Decimal("0")
+    return _cost_from_usage(dict(ar.usage))
 
 
 def _cost_from_usage(usage: dict[str, int]) -> Decimal:

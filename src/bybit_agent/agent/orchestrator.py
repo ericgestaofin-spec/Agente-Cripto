@@ -120,7 +120,9 @@ class ShadowOrchestrator:
             await self._decision_log.record(build_record(result, ts_ms=ts_ms))
         return result
 
-    async def run_cycle(self, *, now_ms: int | None = None) -> ShadowCycleResult:
+    async def run_cycle(
+        self, *, now_ms: int | None = None, allow_analysis: bool = True
+    ) -> ShadowCycleResult:
         # 1. Relógio corrigido pelo skew do servidor (ou injetado nos testes).
         clock = self._clock
         if clock is None:  # pragma: no cover - caminho ao vivo
@@ -153,33 +155,31 @@ class ShadowOrchestrator:
         )
         snapshot["data_quality"] = _data_quality(issues, data.data_age_ms)
 
-        # 5. Pré-filtro determinístico (lever de custo): só chama o Claude se
+        # 5. Teto de orçamento (imposto pelo loop): sem verba, não chama o
+        #    Claude — mas o ciclo ainda é registrado como pulado, com snapshot.
+        if not allow_analysis:
+            return await self._finalize(
+                _skip_result(snapshot, "orçamento diário esgotado"), ts_ms=now
+            )
+
+        # 6. Pré-filtro determinístico (lever de custo): só chama o Claude se
         #    houver algo que valha analisar. Ciclos ociosos não gastam.
         structure = analyze_structure(data.candles_by_tf[_PRIMARY_TF])
         gate = prefilter(snapshot, structure, config=self._prefilter_config)
         if not gate.should_analyze:
             return await self._finalize(
-                ShadowCycleResult(
-                    snapshot=snapshot,
-                    action="NO_TRADE",
-                    intent=None,
-                    risk_decision=None,
-                    agent_result=None,
-                    analyzed=False,
-                    skip_reason=gate.reason,
-                ),
-                ts_ms=now,
+                _skip_result(snapshot, gate.reason), ts_ms=now
             )
 
-        # 6. Claude analisa.
+        # 7. Claude analisa.
         agent_result = self._agent.analyze(snapshot)
 
-        # 7. Parseia a decisão em intenção de domínio.
+        # 8. Parseia a decisão em intenção de domínio.
         parsed = parse_decision(
             agent_result.decision, now_ms=now, max_leverage=self._policy.max_leverage
         )
 
-        # 8. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
+        # 9. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
         risk_decision: RiskDecision | None = None
         if parsed.intent is not None:
             spread_bps = ob.spread_bps()
@@ -220,6 +220,19 @@ class ShadowOrchestrator:
             ),
             ts_ms=now,
         )
+
+
+def _skip_result(snapshot: dict[str, Any], reason: str) -> ShadowCycleResult:
+    """Resultado de um ciclo pulado (pré-filtro ou orçamento) — sem custo."""
+    return ShadowCycleResult(
+        snapshot=snapshot,
+        action="NO_TRADE",
+        intent=None,
+        risk_decision=None,
+        agent_result=None,
+        analyzed=False,
+        skip_reason=reason,
+    )
 
 
 def _estimate_liquidity(ob: Any) -> Decimal:

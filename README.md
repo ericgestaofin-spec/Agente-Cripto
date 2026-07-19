@@ -1,9 +1,19 @@
 # Bybit Risk-Constrained Trading Agent
 
 Agente de trading de criptomoedas onde **Claude Opus 4.8 é o analista** e um
-**motor determinístico de risco é a autoridade final**. O modelo produz
+**motor determinístico de risco decide o dimensionamento**. O modelo produz
 *intenções* de operação; ele nunca escolhe tamanho de posição, alavancagem
 ou limite de risco.
+
+> **Escopo atual do Risk Engine (honesto).** Ele é a autoridade sobre o
+> **dimensionamento de um trade isolado, dado um snapshot honesto** — cálculo
+> de quantidade, arredondamento conservador, regras por operação. A autoridade
+> sobre **portfólio** (risco total agregado), **concorrência** (reserva atômica
+> contra corridas), **execução real** (margem disponível, liquidação por risk
+> tier, proteção pós-fill) e alguns **inputs que ainda vêm do modelo** (RR,
+> preço de liquidação) exige a maquinaria dos Sprints 5–6, ainda não construída.
+> Ver [`docs/REVISAO_ACHADOS.md`](docs/REVISAO_ACHADOS.md) — achados de uma
+> revisão externa, com triagem e status.
 
 ```
 Bybit Market Data → Coletor → Feature Engine → Claude Opus 4.8 (análise)

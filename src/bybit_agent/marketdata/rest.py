@@ -159,8 +159,14 @@ def parse_instrument(payload: dict[str, Any]) -> InstrumentSpec:
 # --------------------------------------------------------------------------
 
 
-class BybitPublicClient:
-    """Cliente REST assíncrono para dados de mercado públicos. Sem auth."""
+class BybitPublicClient:  # pragma: no cover - wrappers de I/O httpx, validados por smoke ao vivo
+    """Cliente REST assíncrono para dados de mercado públicos. Sem auth.
+
+    As funções de parsing (parse_*) contêm toda a LÓGICA e têm 100% de
+    cobertura. Estes métodos são wrappers finos de I/O sobre elas, exercidos
+    pelos smoke tests ao vivo contra a Bybit real — não por unit test (que
+    testaria o mock do httpx, não o código).
+    """
 
     def __init__(self, base_url: str = MAINNET, timeout: float = 15.0) -> None:  # noqa: no-float
         # timeout em segundos (rede), não é valor monetário

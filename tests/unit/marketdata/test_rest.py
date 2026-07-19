@@ -79,6 +79,12 @@ def test_kline_non_zero_retcode_raises() -> None:
         parse_klines(payload)
 
 
+def test_missing_result_block_raises() -> None:
+    """retCode 0 mas sem bloco 'result' — resposta malformada."""
+    with pytest.raises(ValueError, match="result"):
+        parse_klines({"retCode": 0})
+
+
 # --------------------------------------------------------------------------
 # Orderbook — resposta real
 # --------------------------------------------------------------------------

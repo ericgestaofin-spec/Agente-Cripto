@@ -22,17 +22,28 @@ Bybit Market Data → Coletor → Feature Engine → Claude Opus 4.8 (análise)
 | `contracts/*.json` | Schemas versionados |
 | `docs/spikes/` | Resultados dos spikes empíricos |
 
-## Estado atual — Sprint 0 concluído
+## Estado atual — Sprints 0, 1 e 4 concluídos
 
 | Componente | Estado | Testes |
 |---|---|---|
 | `domain/money.py` — Decimal, tick/step | ✅ | 31 |
-| Lint anti-`float` (gate de CI) | ✅ | 16 |
+| Lint anti-`float` (gate de CI) | ✅ | 18 |
 | Spike S-2 (script pronto, **não executado**) | ⏳ | 14 |
 | `contracts/decision_v1.json` | ✅ | 17 |
-| Market data, Risk Engine, Gateway, Agente | ❌ | — |
+| **`risk/` — política, sizing, validadores, engine** | ✅ | **74** |
+| Market data, Gateway, Agente | ❌ | — |
 
-**78 testes passando.** Suite unit roda em < 1s.
+**154 testes passando.** `risk/` com **100% de cobertura de branch** e 9 property tests (1000+ casos cada).
+
+### O Risk Engine (Sprint 4) — o coração do sistema
+
+- `risk/policy.py` — política imutável (`frozen` + `slots`), carregada de arquivo, com `policy_hash` de auditoria
+- `risk/sizing.py` — quantidade calculada de risco/taxas/slippage, sempre arredondada para baixo; abaixo do mínimo → rejeita, nunca infla
+- `risk/validators.py` — 20 regras de rejeição; todas rodam sempre (relatório completo, não para no primeiro erro)
+- `risk/engine.py` — valida **antes** de dimensionar; `TradeIntent` não tem campo de quantidade — o modelo não influencia o tamanho
+
+As invariantes que sustentam o sistema (`tests/property/test_risk_invariants.py`):
+`P1` perda projetada nunca excede o orçamento · `P5` determinismo · `P9` menos risco nunca gera mais quantidade.
 
 ## Setup
 

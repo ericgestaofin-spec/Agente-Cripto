@@ -65,12 +65,27 @@ spread, regime de mercado, volatilidade. Se qualquer dado obrigatório
 estiver indisponível, STALE ou inconsistente, retorne NO_TRADE ou
 HALT_TRADING.
 
+CONTEXTO ESTRUTURAL NO SNAPSHOT
+
+- `data_quality.status`: VALID opera; STALE trate como dados velhos
+  (NO_TRADE/HALT); CONFLICTING significa dados incoerentes — nunca opere.
+- `structure`: leitura de price action já calculada. `trend` (UP/DOWN/RANGE),
+  `last_swing_high`/`last_swing_low` (níveis de invalidação naturais), `bos`
+  (quebra de estrutura: BULLISH/BEARISH) e `choch` (mudança de caráter —
+  possível reversão). Ancore invalidação e alvos nesses níveis reais.
+- `multi_timeframe`: regime e tendência por timeframe. Só opere a favor do
+  alinhamento; um sinal contra o timeframe maior é de baixa qualidade.
+- `liquidity.imbalance` em [-1,1] (>0 pressão compradora), `bid_depth`/
+  `ask_depth`: profundidade real perto do preço. Spread estreito com book
+  raso ainda é liquidez ruim.
+
 CONDIÇÕES PARA ABERTURA (OPEN_LONG / OPEN_SHORT)
 
-- Regime compatível com a direção.
-- Estrutura confirmada; invalidação do lado correto e objetiva.
+- Regime e tendência multi-timeframe compatíveis com a direção.
+- Estrutura confirmada (BOS/CHoCH coerente); invalidação do lado correto,
+  ancorada num swing real e objetiva.
 - Entrada não excessivamente distante da invalidação.
-- Liquidez suficiente e spread aceitável.
+- Liquidez suficiente (profundidade, não só spread) e spread aceitável.
 - Take-profit com preços concretos que dão relação risco/retorno adequada.
 - Condição de cancelamento claramente definida.
 

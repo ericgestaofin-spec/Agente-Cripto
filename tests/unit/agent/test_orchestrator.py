@@ -134,6 +134,39 @@ async def test_cycle_never_executes_orders() -> None:
     assert not hasattr(result, "sent_order")
 
 
+class _FlatMarket(_FakeMarket):
+    """Mercado parado: candles idênticos, sem estrutura nem volatilidade."""
+
+    async def klines(self, symbol: str = "BTCUSDT", interval: str = "5",
+                     limit: int = 200) -> list[Candle]:
+        return [
+            Candle(start_ms=1_700_000_000_000 + i * 300_000,
+                   open=Decimal("60000"), high=Decimal("60000"),
+                   low=Decimal("60000"), close=Decimal("60000"),
+                   volume=Decimal("10"), turnover=Decimal("600000"))
+            for i in range(60)
+        ]
+
+
+@pytest.mark.asyncio
+async def test_cycle_skips_claude_when_market_is_idle() -> None:
+    """⭐ A2: pré-filtro poupa a chamada ao Claude num mercado parado.
+    Sem estrutura, sem tendência, vol zero → não gasta."""
+    agent = _FakeAgent(_open_long())
+    orch = ShadowOrchestrator(
+        market=_FlatMarket(), agent=agent,
+        policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK,
+    )
+    result = await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
+    assert result.analyzed is False
+    assert result.skip_reason is not None
+    assert result.agent_result is None
+    assert result.risk_decision is None
+    # o Claude NÃO foi chamado — economia real.
+    assert agent.seen_snapshot is None
+
+
 @pytest.mark.asyncio
 async def test_cycle_result_carries_snapshot_for_audit() -> None:
     orch = ShadowOrchestrator(

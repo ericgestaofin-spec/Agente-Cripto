@@ -21,7 +21,9 @@ from typing import Any, Protocol
 
 from bybit_agent.agent.client import AgentResult
 from bybit_agent.agent.parser import parse_decision
+from bybit_agent.agent.prefilter import PrefilterConfig, prefilter
 from bybit_agent.features.snapshot import build_snapshot
+from bybit_agent.features.structure import analyze_structure
 from bybit_agent.marketdata.clock import ClockSkew
 from bybit_agent.marketdata.coherent import (
     DataIssue,
@@ -77,7 +79,9 @@ class ShadowCycleResult:
     action: str
     intent: TradeIntent | None
     risk_decision: RiskDecision | None
-    agent_result: AgentResult
+    agent_result: AgentResult | None
+    analyzed: bool = True
+    skip_reason: str | None = None
 
 
 class ShadowOrchestrator:
@@ -92,6 +96,7 @@ class ShadowOrchestrator:
         account_equity: Decimal,
         symbol: str = "BTCUSDT",
         clock: ClockSkew | None = None,
+        prefilter_config: PrefilterConfig | None = None,
     ) -> None:
         self._market = market
         self._agent = agent
@@ -100,6 +105,7 @@ class ShadowOrchestrator:
         self._symbol = symbol
         # Skew injetado nos testes; medido ao vivo em produção.
         self._clock = clock
+        self._prefilter_config = prefilter_config
 
     async def run_cycle(self, *, now_ms: int | None = None) -> ShadowCycleResult:
         # 1. Relógio corrigido pelo skew do servidor (ou injetado nos testes).
@@ -133,15 +139,30 @@ class ShadowOrchestrator:
         )
         snapshot["data_quality"] = _data_quality(issues, data.data_age_ms)
 
-        # 5. Claude analisa.
+        # 5. Pré-filtro determinístico (lever de custo): só chama o Claude se
+        #    houver algo que valha analisar. Ciclos ociosos não gastam.
+        structure = analyze_structure(data.candles_by_tf[_PRIMARY_TF])
+        gate = prefilter(snapshot, structure, config=self._prefilter_config)
+        if not gate.should_analyze:
+            return ShadowCycleResult(
+                snapshot=snapshot,
+                action="NO_TRADE",
+                intent=None,
+                risk_decision=None,
+                agent_result=None,
+                analyzed=False,
+                skip_reason=gate.reason,
+            )
+
+        # 6. Claude analisa.
         agent_result = self._agent.analyze(snapshot)
 
-        # 6. Parseia a decisão em intenção de domínio.
+        # 7. Parseia a decisão em intenção de domínio.
         parsed = parse_decision(
             agent_result.decision, now_ms=now, max_leverage=self._policy.max_leverage
         )
 
-        # 7. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
+        # 8. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
         risk_decision: RiskDecision | None = None
         if parsed.intent is not None:
             spread_bps = ob.spread_bps()

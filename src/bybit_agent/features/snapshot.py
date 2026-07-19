@@ -14,6 +14,8 @@ from decimal import Decimal
 from typing import Any
 
 from bybit_agent.features.indicators import atr, ema, realized_volatility
+from bybit_agent.features.liquidity import summarize_liquidity
+from bybit_agent.features.structure import analyze_structure
 from bybit_agent.marketdata.rest import Candle, OrderBook, Ticker
 
 # Timeframes e períodos de indicador. Simples e explícito para a v0.
@@ -74,6 +76,19 @@ def build_snapshot(
     ema_fast = ema(closes, period=_EMA_FAST)
     ema_slow = ema(closes, period=_EMA_SLOW)
 
+    structure = analyze_structure(candles)
+    liq = summarize_liquidity(orderbook)
+
+    # Alinhamento multi-timeframe: regime e tendência estrutural por TF. É o
+    # contexto que separa um pullback numa tendência maior de uma reversão.
+    multi_tf = {
+        tf: {
+            "regime": _classify_regime(cs),
+            "trend": analyze_structure(cs).trend,
+        }
+        for tf, cs in candles_by_tf.items()
+    }
+
     return {
         "symbol": symbol,
         "timestamp": data_ts_ms,
@@ -84,6 +99,14 @@ def build_snapshot(
             "ema_slow": _s(ema_slow),
             "primary_timeframe": primary_tf,
         },
+        "structure": {
+            "trend": structure.trend,
+            "last_swing_high": _s(structure.last_swing_high),
+            "last_swing_low": _s(structure.last_swing_low),
+            "bos": structure.bos,
+            "choch": structure.choch,
+        },
+        "multi_timeframe": multi_tf,
         "price": {
             "last": str(ticker.last_price),
             "mark": str(ticker.mark_price),
@@ -98,6 +121,9 @@ def build_snapshot(
             "best_bid": str(orderbook.best_bid().price),
             "best_ask": str(orderbook.best_ask().price),
             "book_levels": len(orderbook.bids),
+            "imbalance": str(liq.imbalance),
+            "bid_depth": str(liq.bid_depth),
+            "ask_depth": str(liq.ask_depth),
         },
         "derivatives": {
             "funding_rate": str(ticker.funding_rate),

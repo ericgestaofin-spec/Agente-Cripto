@@ -126,5 +126,31 @@ def test_snapshot_regime_unknown_when_insufficient() -> None:
     assert s["market_regime"] == "UNKNOWN"
 
 
+def test_snapshot_has_structure_block() -> None:
+    """⭐ A2: o snapshot carrega a leitura estrutural (swings, BOS)."""
+    s = _build()
+    st = s["structure"]
+    assert st["trend"] in ("UP", "DOWN", "RANGE", "UNKNOWN")
+    assert "last_swing_high" in st
+    assert "bos" in st
+    assert isinstance(st["choch"], bool)
+
+
+def test_snapshot_liquidity_has_imbalance_and_depth() -> None:
+    s = _build()
+    liq = s["liquidity"]
+    assert isinstance(liq["imbalance"], str)
+    assert isinstance(liq["bid_depth"], str)
+    assert isinstance(liq["ask_depth"], str)
+
+
+def test_snapshot_multi_timeframe_summarizes_each_tf() -> None:
+    """⭐ A2: alinhamento multi-timeframe — regime e tendência por TF."""
+    s = _build(candles_by_tf={"60": _candles(60), "5": _candles(60)})
+    mtf = s["multi_timeframe"]
+    assert set(mtf) == {"60", "5"}
+    assert "regime" in mtf["5"] and "trend" in mtf["5"]
+
+
 def test_snapshot_is_deterministic() -> None:
     assert _build() == _build()

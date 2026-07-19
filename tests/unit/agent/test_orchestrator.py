@@ -13,8 +13,12 @@ from typing import Any
 import pytest
 
 from bybit_agent.agent.orchestrator import ShadowOrchestrator
+from bybit_agent.marketdata.clock import ClockSkew
 from bybit_agent.marketdata.rest import BookLevel, Candle, OrderBook, Ticker
 from bybit_agent.risk.policy import RiskPolicy
+
+# Skew são injetado nos testes — sem rede para medir o relógio do servidor.
+_CLOCK = ClockSkew(offset_ms=0, max_offset_ms=500)
 
 
 class _FakeMarket:
@@ -90,6 +94,7 @@ async def test_cycle_no_trade_produces_no_risk_decision() -> None:
     orch = ShadowOrchestrator(
         market=_FakeMarket(), agent=_FakeAgent(_no_trade()),
         policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK,
     )
     result = await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
     assert result.action == "NO_TRADE"
@@ -104,6 +109,7 @@ async def test_cycle_open_long_runs_risk_engine() -> None:
     orch = ShadowOrchestrator(
         market=_FakeMarket(), agent=agent,
         policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK,
     )
     result = await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
     assert result.action == "OPEN_LONG"
@@ -121,6 +127,7 @@ async def test_cycle_never_executes_orders() -> None:
     orch = ShadowOrchestrator(
         market=_FakeMarket(), agent=_FakeAgent(_open_long()),
         policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK,
     )
     result = await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
     assert not hasattr(result, "order_id")
@@ -132,6 +139,7 @@ async def test_cycle_result_carries_snapshot_for_audit() -> None:
     orch = ShadowOrchestrator(
         market=_FakeMarket(), agent=_FakeAgent(_no_trade()),
         policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK,
     )
     result = await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
     assert result.snapshot["symbol"] == "BTCUSDT"

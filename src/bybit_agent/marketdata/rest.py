@@ -214,3 +214,8 @@ class BybitPublicClient:  # pragma: no cover - wrappers de I/O httpx, validados 
             {"category": CATEGORY, "symbol": symbol},
         )
         return parse_ticker(payload)
+
+    async def clock_skew(self, *, max_offset_ms: int = 500) -> Any:
+        from bybit_agent.marketdata.clock import measure_skew
+
+        return await measure_skew(self._client, max_offset_ms=max_offset_ms)

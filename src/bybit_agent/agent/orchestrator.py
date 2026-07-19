@@ -14,7 +14,6 @@ garantia estrutural testada.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -23,6 +22,12 @@ from typing import Any, Protocol
 from bybit_agent.agent.client import AgentResult
 from bybit_agent.agent.parser import parse_decision
 from bybit_agent.features.snapshot import build_snapshot
+from bybit_agent.marketdata.clock import ClockSkew
+from bybit_agent.marketdata.coherent import (
+    DataIssue,
+    fetch_coherent,
+    validate_market_data,
+)
 from bybit_agent.risk.engine import RiskDecision, TradeIntent, evaluate
 from bybit_agent.risk.policy import RiskPolicy
 from bybit_agent.risk.validators import AccountState
@@ -31,6 +36,13 @@ from bybit_agent.risk.validators import AccountState
 # na v0; a curva de impacto real vem depois (achado 7 do review).
 _TAKER_FEE = Decimal("0.00055")
 _PRIMARY_TF = "5"
+_MAX_DATA_AGE_MS = 10_000
+
+# Issues que indicam dados corrompidos (não só velhos) → CONFLICTING.
+_INTEGRITY_CODES = {
+    "BOOK_CROSSED", "LAST_OUTSIDE_BOOK", "NEGATIVE_DATA_AGE",
+    "NON_POSITIVE_PRICE", "CLOCK_SKEW",
+}
 
 
 class _Market(Protocol):
@@ -38,6 +50,21 @@ class _Market(Protocol):
     async def klines(self, symbol: str = ..., interval: str = ..., limit: int = ...) -> Any: ...
     async def orderbook(self, symbol: str = ..., depth: int = ...) -> Any: ...
     async def ticker(self, symbol: str = ...) -> Any: ...
+
+
+def _data_quality(issues: list[DataIssue], age_ms: int) -> dict[str, Any]:
+    codes = {i.code for i in issues}
+    if codes & _INTEGRITY_CODES:
+        status = "CONFLICTING"
+    elif "DATA_STALE" in codes:
+        status = "STALE"
+    else:
+        status = "VALID"
+    return {
+        "status": status,
+        "snapshot_age_ms": age_ms,
+        "issues": [i.detail for i in issues],
+    }
 
 
 class _Agent(Protocol):
@@ -64,48 +91,57 @@ class ShadowOrchestrator:
         policy: RiskPolicy,
         account_equity: Decimal,
         symbol: str = "BTCUSDT",
+        clock: ClockSkew | None = None,
     ) -> None:
         self._market = market
         self._agent = agent
         self._policy = policy
         self._equity = account_equity
         self._symbol = symbol
+        # Skew injetado nos testes; medido ao vivo em produção.
+        self._clock = clock
 
     async def run_cycle(self, *, now_ms: int | None = None) -> ShadowCycleResult:
-        # 1. Coleta dados reais da Bybit CONCORRENTEMENTE — book e ticker
-        #    precisam ser o mais próximos possível no tempo, senão o mercado
-        #    se move entre eles e o snapshot fica incoerente (last abaixo do
-        #    best_bid, etc.). O `now` é capturado DEPOIS da coleta, senão a
-        #    latência das chamadas faz os dados parecerem datados no futuro
-        #    (data_age_ms negativo). Ambos os bugs foram flagrados pelo
-        #    próprio Claude num ciclo ao vivo.
-        spec, candles, ob, ticker = await asyncio.gather(
-            self._market.instrument(self._symbol),
-            self._market.klines(self._symbol, interval=_PRIMARY_TF, limit=200),
-            self._market.orderbook(self._symbol, depth=50),
-            self._market.ticker(self._symbol),
-        )
-        now = now_ms if now_ms is not None else int(time.time() * 1000)
+        # 1. Relógio corrigido pelo skew do servidor (ou injetado nos testes).
+        clock = self._clock
+        if clock is None:  # pragma: no cover - caminho ao vivo
+            clock = await self._market.clock_skew()
 
-        # 2. Monta o snapshot estruturado.
+        spec = await self._market.instrument(self._symbol)
+        local_now = now_ms if now_ms is not None else int(time.time() * 1000)
+
+        # 2. Coleta COERENTE (concorrente) + frescor com relógio corrigido.
+        data = await fetch_coherent(
+            self._market, timeframes=[_PRIMARY_TF], clock=clock,
+            local_now_ms=local_now, symbol=self._symbol,
+        )
+        ob = data.orderbook
+        now = data.corrected_now_ms
+
+        # 3. Valida integridade e frescor — pega book cruzado, last fora do
+        #    book, dados velhos, skew de relógio (os bugs que o Claude achou).
+        issues = validate_market_data(data, max_data_age_ms=_MAX_DATA_AGE_MS)
+
+        # 4. Monta o snapshot + data_quality explícito para o Claude.
         snapshot = build_snapshot(
             symbol=self._symbol,
-            candles_by_tf={_PRIMARY_TF: candles},
+            candles_by_tf=data.candles_by_tf,
             orderbook=ob,
-            ticker=ticker,
+            ticker=data.ticker,
             now_ms=now,
             data_ts_ms=ob.ts_ms,
         )
+        snapshot["data_quality"] = _data_quality(issues, data.data_age_ms)
 
-        # 3. Claude analisa.
+        # 5. Claude analisa.
         agent_result = self._agent.analyze(snapshot)
 
-        # 4. Parseia a decisão em intenção de domínio.
+        # 6. Parseia a decisão em intenção de domínio.
         parsed = parse_decision(
             agent_result.decision, now_ms=now, max_leverage=self._policy.max_leverage
         )
 
-        # 5. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
+        # 7. Se há intenção de abertura, o Risk Engine decide (shadow — não executa).
         risk_decision: RiskDecision | None = None
         if parsed.intent is not None:
             spread_bps = ob.spread_bps()
@@ -117,7 +153,7 @@ class ShadowOrchestrator:
                 open_orders=0,
                 consecutive_losses=0,
                 entries_today=0,
-                data_age_ms=snapshot["data_age_ms"],
+                data_age_ms=max(data.data_age_ms, 0),
                 spread_bps=spread_bps,
                 estimated_slippage_bps=spread_bps,  # proxy v0
                 has_conflicting_position=False,

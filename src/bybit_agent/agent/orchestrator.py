@@ -29,6 +29,7 @@ from bybit_agent.marketdata.coherent import (
     fetch_coherent,
     validate_market_data,
 )
+from bybit_agent.persistence.decision_log import DecisionLog, build_record
 from bybit_agent.risk.engine import RiskDecision, TradeIntent, evaluate
 from bybit_agent.risk.policy import RiskPolicy
 from bybit_agent.risk.validators import AccountState
@@ -98,6 +99,7 @@ class ShadowOrchestrator:
         symbol: str = "BTCUSDT",
         clock: ClockSkew | None = None,
         prefilter_config: PrefilterConfig | None = None,
+        decision_log: DecisionLog | None = None,
     ) -> None:
         self._market = market
         self._agent = agent
@@ -107,6 +109,16 @@ class ShadowOrchestrator:
         # Skew injetado nos testes; medido ao vivo em produção.
         self._clock = clock
         self._prefilter_config = prefilter_config
+        self._decision_log = decision_log
+
+    async def _finalize(
+        self, result: ShadowCycleResult, *, ts_ms: int
+    ) -> ShadowCycleResult:
+        """Registra o ciclo no log (se houver) e devolve o resultado.
+        Todo ciclo é gravado — inclusive os pulados pelo pré-filtro."""
+        if self._decision_log is not None:
+            await self._decision_log.record(build_record(result, ts_ms=ts_ms))
+        return result
 
     async def run_cycle(self, *, now_ms: int | None = None) -> ShadowCycleResult:
         # 1. Relógio corrigido pelo skew do servidor (ou injetado nos testes).
@@ -146,14 +158,17 @@ class ShadowOrchestrator:
         structure = analyze_structure(data.candles_by_tf[_PRIMARY_TF])
         gate = prefilter(snapshot, structure, config=self._prefilter_config)
         if not gate.should_analyze:
-            return ShadowCycleResult(
-                snapshot=snapshot,
-                action="NO_TRADE",
-                intent=None,
-                risk_decision=None,
-                agent_result=None,
-                analyzed=False,
-                skip_reason=gate.reason,
+            return await self._finalize(
+                ShadowCycleResult(
+                    snapshot=snapshot,
+                    action="NO_TRADE",
+                    intent=None,
+                    risk_decision=None,
+                    agent_result=None,
+                    analyzed=False,
+                    skip_reason=gate.reason,
+                ),
+                ts_ms=now,
             )
 
         # 6. Claude analisa.
@@ -195,12 +210,15 @@ class ShadowOrchestrator:
                 now_ms=now,
             )
 
-        return ShadowCycleResult(
-            snapshot=snapshot,
-            action=parsed.action,
-            intent=parsed.intent,
-            risk_decision=risk_decision,
-            agent_result=agent_result,
+        return await self._finalize(
+            ShadowCycleResult(
+                snapshot=snapshot,
+                action=parsed.action,
+                intent=parsed.intent,
+                risk_decision=risk_decision,
+                agent_result=agent_result,
+            ),
+            ts_ms=now,
         )
 
 

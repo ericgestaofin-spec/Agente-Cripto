@@ -168,6 +168,41 @@ async def test_cycle_skips_claude_when_market_is_idle() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cycle_persists_decision_when_log_present() -> None:
+    """⭐ A3: todo ciclo é gravado no DecisionLog — inclusive skip e trade."""
+    from bybit_agent.persistence.decision_log import InMemoryDecisionLog
+
+    log = InMemoryDecisionLog()
+    orch = ShadowOrchestrator(
+        market=_FakeMarket(), agent=_FakeAgent(_open_long()),
+        policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK, decision_log=log,
+    )
+    await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
+    recorded = await log.recent(limit=10)
+    assert len(recorded) == 1
+    assert recorded[0].action == "OPEN_LONG"
+    assert recorded[0].snapshot["symbol"] == "BTCUSDT"
+
+
+@pytest.mark.asyncio
+async def test_skipped_cycle_is_also_persisted() -> None:
+    from bybit_agent.persistence.decision_log import InMemoryDecisionLog
+
+    log = InMemoryDecisionLog()
+    orch = ShadowOrchestrator(
+        market=_FlatMarket(), agent=_FakeAgent(_open_long()),
+        policy=RiskPolicy.conservative_v0(), account_equity=Decimal("100000"),
+        clock=_CLOCK, decision_log=log,
+    )
+    await orch.run_cycle(now_ms=1_700_000_000_000 + 60 * 300_000)
+    recorded = await log.recent(limit=10)
+    assert len(recorded) == 1
+    assert recorded[0].analyzed is False
+    assert recorded[0].cost_usd == "0"
+
+
+@pytest.mark.asyncio
 async def test_cycle_result_carries_snapshot_for_audit() -> None:
     orch = ShadowOrchestrator(
         market=_FakeMarket(), agent=_FakeAgent(_no_trade()),

@@ -25,6 +25,14 @@ from typing import Literal
 
 from bybit_agent.domain.instrument import InstrumentSpec, OrderType
 from bybit_agent.domain.money import Price, Quantity
+from bybit_agent.risk._validation import (
+    require_finite_non_negative,
+    require_finite_positive,
+    require_non_empty_symbol,
+    require_non_negative_int,
+    require_side,
+    validate_take_profit_fractions,
+)
 from bybit_agent.risk.policy import RiskPolicy
 from bybit_agent.risk.sizing import BindingConstraint, SizingInputs, compute_size
 from bybit_agent.risk.validators import (
@@ -53,10 +61,27 @@ class TradeIntent:
     liquidation: Decimal
     rr_net: Decimal
     intent_expires_at_ms: int
-    take_profit_fractions: list[Decimal]
+    take_profit_fractions: tuple[Decimal, ...]
     is_averaging_down: bool
     widens_stop: bool
     order_type: OrderType = "Limit"
+
+    def __post_init__(self) -> None:
+        require_non_empty_symbol(self.symbol)
+        require_side(self.side)
+        require_finite_positive(self.entry, name="entry")
+        require_finite_positive(self.stop, name="stop")
+        require_finite_positive(self.invalidation, name="invalidation")
+        require_finite_positive(self.liquidation, name="liquidation")
+        require_finite_non_negative(self.rr_net, name="rr_net")
+        require_non_negative_int(
+            self.intent_expires_at_ms, name="intent_expires_at_ms"
+        )
+        object.__setattr__(
+            self,
+            "take_profit_fractions",
+            validate_take_profit_fractions(self.take_profit_fractions),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,9 +108,25 @@ def evaluate(
 ) -> RiskDecision:
     """Avalia a intenção contra as regras e calcula a quantidade.
 
-    Retorna sempre uma RiskDecision — nunca levanta por intenção de
-    mercado válida.
+    Retorna sempre uma RiskDecision — nunca levanta, nem por intenção de
+    mercado válida, nem por parâmetro injetado inválido.
     """
+    # 0. Sanidade dos parâmetros injetados de fora. Um slippage NaN ou uma
+    #    liquidez negativa não podem virar exceção que escapa ao gateway —
+    #    viram uma rejeição INVALID_INPUT auditável.
+    try:
+        require_finite_non_negative(taker_fee_rate, name="taker_fee_rate")
+        require_finite_non_negative(estimated_slippage, name="estimated_slippage")
+        require_finite_non_negative(available_liquidity, name="available_liquidity")
+        require_non_negative_int(now_ms, name="now_ms")
+    except (ValueError, TypeError) as exc:
+        return RiskDecision(
+            approved=False,
+            quantity=None,
+            rejections=[Rejection("INVALID_INPUT", str(exc))],
+            policy_hash=policy.policy_hash,
+        )
+
     # 1. Validação primeiro. Trade proibido não recebe dimensionamento.
     context = TradeContext(
         symbol=intent.symbol,

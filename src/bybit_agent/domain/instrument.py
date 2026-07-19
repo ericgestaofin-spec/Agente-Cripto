@@ -45,6 +45,35 @@ class InstrumentSpec:
     min_notional: Decimal
     max_leverage: Decimal
 
+    def __post_init__(self) -> None:
+        # A Bybit publica esses limites e pode ajustá-los; um payload
+        # corrompido (tickSize=NaN, qty negativa) não pode virar spec
+        # utilizável — quantidades derivadas dela seriam rejeitadas ou,
+        # pior, aceitas erradas pela corretora.
+        for name in (
+            "tick_size", "qty_step", "min_order_qty", "max_order_qty",
+            "max_market_order_qty", "min_notional",
+        ):
+            v = getattr(self, name)
+            if not v.is_finite():
+                raise ValueError(f"{self.symbol}.{name} deve ser finito, recebido {v!r}")
+            if v <= 0:
+                raise ValueError(f"{self.symbol}.{name} deve ser positivo, recebido {v!r}")
+        if not self.max_leverage.is_finite() or self.max_leverage < 1:
+            raise ValueError(
+                f"{self.symbol}.max_leverage deve ser >= 1, recebido {self.max_leverage!r}"
+            )
+        if self.max_order_qty < self.min_order_qty:
+            raise ValueError(
+                f"{self.symbol}: maxOrderQty {self.max_order_qty} < minOrderQty "
+                f"{self.min_order_qty}"
+            )
+        if self.max_market_order_qty < self.min_order_qty:
+            raise ValueError(
+                f"{self.symbol}: maxMktOrderQty {self.max_market_order_qty} < "
+                f"minOrderQty {self.min_order_qty}"
+            )
+
     @classmethod
     def from_bybit(cls, payload: dict[str, Any]) -> InstrumentSpec:
         status = payload.get("status")

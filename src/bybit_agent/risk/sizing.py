@@ -66,6 +66,16 @@ def compute_size(inp: SizingInputs) -> SizingResult:
     Nunca levanta exceção por entrada de mercado válida; erros de
     configuração (spec inconsistente) podem levantar.
     """
+    # Entrada não-positiva não é intenção de mercado válida — rejeita em vez
+    # de deixar a divisão por entry levantar. Honra o contrato "sempre
+    # retorna SizingResult".
+    if inp.entry.value <= 0:
+        return _rejected(
+            "preço de entrada deve ser positivo",
+            risk_per_unit=Decimal("0"),
+            budget=Decimal("0"),
+        )
+
     budget = inp.equity.value * inp.risk_fraction
     if budget <= 0:
         return _rejected(

@@ -19,6 +19,15 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
+from bybit_agent.risk._validation import (
+    require_finite,
+    require_finite_non_negative,
+    require_finite_positive,
+    require_non_empty_symbol,
+    require_non_negative_int,
+    require_side,
+    validate_take_profit_fractions,
+)
 from bybit_agent.risk.policy import RiskPolicy
 
 Side = Literal["BUY", "SELL"]
@@ -47,6 +56,21 @@ class AccountState:
     has_conflicting_position: bool
     has_conflicting_order: bool
 
+    def __post_init__(self) -> None:
+        # equity <= 0 é condição de halt, não input de sizing válido.
+        require_finite_positive(self.equity, name="equity")
+        require_finite(self.daily_pnl, name="daily_pnl")
+        require_finite(self.weekly_pnl, name="weekly_pnl")
+        require_finite_non_negative(self.spread_bps, name="spread_bps")
+        require_finite_non_negative(
+            self.estimated_slippage_bps, name="estimated_slippage_bps"
+        )
+        for name in (
+            "open_positions", "open_orders", "consecutive_losses",
+            "entries_today", "data_age_ms",
+        ):
+            require_non_negative_int(getattr(self, name), name=name)
+
 
 @dataclass(frozen=True, slots=True)
 class TradeContext:
@@ -61,9 +85,25 @@ class TradeContext:
     rr_net: Decimal
     intent_expires_at_ms: int
     now_ms: int
-    take_profit_fractions: list[Decimal]
+    take_profit_fractions: tuple[Decimal, ...]
     is_averaging_down: bool
     widens_stop: bool
+
+    def __post_init__(self) -> None:
+        require_non_empty_symbol(self.symbol)
+        require_side(self.side)
+        require_finite_positive(self.entry, name="entry")
+        require_finite_positive(self.stop, name="stop")
+        require_finite_positive(self.invalidation, name="invalidation")
+        require_finite_positive(self.liquidation, name="liquidation")
+        require_finite_non_negative(self.rr_net, name="rr_net")
+        require_non_negative_int(self.intent_expires_at_ms, name="intent_expires_at_ms")
+        require_non_negative_int(self.now_ms, name="now_ms")
+        object.__setattr__(
+            self,
+            "take_profit_fractions",
+            validate_take_profit_fractions(self.take_profit_fractions),
+        )
 
 
 @dataclass(frozen=True, slots=True)

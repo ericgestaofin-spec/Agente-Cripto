@@ -14,6 +14,7 @@ garantia estrutural testada.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -71,13 +72,20 @@ class ShadowOrchestrator:
         self._symbol = symbol
 
     async def run_cycle(self, *, now_ms: int | None = None) -> ShadowCycleResult:
+        # 1. Coleta dados reais da Bybit CONCORRENTEMENTE — book e ticker
+        #    precisam ser o mais próximos possível no tempo, senão o mercado
+        #    se move entre eles e o snapshot fica incoerente (last abaixo do
+        #    best_bid, etc.). O `now` é capturado DEPOIS da coleta, senão a
+        #    latência das chamadas faz os dados parecerem datados no futuro
+        #    (data_age_ms negativo). Ambos os bugs foram flagrados pelo
+        #    próprio Claude num ciclo ao vivo.
+        spec, candles, ob, ticker = await asyncio.gather(
+            self._market.instrument(self._symbol),
+            self._market.klines(self._symbol, interval=_PRIMARY_TF, limit=200),
+            self._market.orderbook(self._symbol, depth=50),
+            self._market.ticker(self._symbol),
+        )
         now = now_ms if now_ms is not None else int(time.time() * 1000)
-
-        # 1. Coleta dados reais da Bybit.
-        spec = await self._market.instrument(self._symbol)
-        candles = await self._market.klines(self._symbol, interval=_PRIMARY_TF, limit=200)
-        ob = await self._market.orderbook(self._symbol, depth=50)
-        ticker = await self._market.ticker(self._symbol)
 
         # 2. Monta o snapshot estruturado.
         snapshot = build_snapshot(

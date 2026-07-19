@@ -592,9 +592,24 @@ test_halt_emits_alert_exactly_once
 
 **Saída bloqueante:**
 - Cobertura de branch em `risk/` = **100%**. Sem exceções.
-- Mutation score ≥ 90% (`mutmut run --paths-to-mutate src/bybit_agent/risk/`).
+- Mutation score ≥ 90%.
 - Teste arquitetural confirma zero imports de I/O.
 - Revisão manual linha a linha de `sizing.py` e `validators.py` por alguém que não os escreveu.
+
+**Nota de implementação — ferramenta de mutation testing:**
+`mutmut` 3.x não roda em Windows nativo (só WSL) e `mutatest` quebra com
+Python 3.13 (`random.sample` sobre set). Construímos um mutador próprio em
+`tools/mutation/mutate.py`, baseado em `tokenize` — muta apenas tokens de
+operador reais (`OP`, `and`/`or`), nunca conteúdo de string, comentário ou
+docstring. O gate roda no CI Linux com mutmut e localmente com o nosso.
+
+**O que o mutation testing encontrou (valor concreto):** um bug real em
+`validators._stale`. O código rejeitava com `data_age_ms >= max` (idade
+exatamente no limite = stale), mas a própria mensagem dizia `> máximo`, e
+os validadores irmãos de threshold (`_spread`, `_slippage`) usavam `>`.
+`max_data_age_ms` é o máximo PERMITIDO — exatamente no limite deve ser
+aceito. 100% de cobertura de branch não pegou isto; mutation testing sim.
+Corrigido, com testes de fronteira dedicados em `test_boundaries.py`.
 
 ---
 

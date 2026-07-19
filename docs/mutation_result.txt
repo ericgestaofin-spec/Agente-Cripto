@@ -1,15 +1,58 @@
-Exception in thread Thread-35 (_readerthread):
-Traceback (most recent call last):
-  File "C:\Users\eric.silva\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 1044, in _bootstrap_inner
-    self.run()
-    ~~~~~~~~^^
-  File "C:\Users\eric.silva\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 995, in run
-    self._target(*self._args, **self._kwargs)
-    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\eric.silva\AppData\Local\Programs\Python\Python313\Lib\subprocess.py", line 1615, in _readerthread
-    buffer.append(fh.read())
-                  ~~~~~~~^^
-  File "C:\Users\eric.silva\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 23, in decode
-    return codecs.charmap_decode(input,self.errors,decoding_table)[0]
-           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 308: character maps to <undefined>
+mutation: 52 mutações em 4 módulos
+
+  [  1/52] morta       risk/sizing.py:69 [*] -> /
+  [  2/52] morta       risk/sizing.py:70 [<=] -> <
+  [  3/52] morta       risk/sizing.py:78 [-] -> +
+  [  4/52] morta       risk/sizing.py:79 [<=] -> <
+  [  5/52] morta       risk/sizing.py:87 [+] -> -
+  [  6/52] morta       risk/sizing.py:87 [*] -> /
+  [  7/52] morta       risk/sizing.py:88 [+] -> -
+  [  8/52] morta       risk/sizing.py:88 [+] -> -
+  [  9/52] morta       risk/sizing.py:104 [*] -> /
+  [ 10/52] morta       risk/sizing.py:120 [<] -> <=
+  [ 11/52] morta       risk/sizing.py:128 [*] -> /
+  [ 12/52] morta       risk/sizing.py:129 [<] -> <=
+  [ 13/52] morta       risk/validators.py:89 [-] -> +
+  [ 14/52] morta       risk/validators.py:89 [*] -> /
+  [ 15/52] morta       risk/validators.py:90 [<=] -> <
+  [ 16/52] morta       risk/validators.py:96 [-] -> +
+  [ 17/52] morta       risk/validators.py:96 [*] -> /
+  [ 18/52] morta       risk/validators.py:97 [<=] -> <
+  [ 19/52] morta       risk/validators.py:104 [-] -> +
+  [ 20/52] morta       risk/validators.py:104 [*] -> /
+  [ 21/52] morta       risk/validators.py:105 [-] -> +
+  [ 22/52] morta       risk/validators.py:105 [*] -> /
+  [ 23/52] morta       risk/validators.py:106 [<] -> <=
+  [ 24/52] morta       risk/validators.py:115 [>=] -> >
+  [ 25/52] morta       risk/validators.py:124 [>=] -> >
+  [ 26/52] morta       risk/validators.py:133 [>=] -> >
+  [ 27/52] morta       risk/validators.py:151 [>] -> >=
+  [ 28/52] morta       risk/validators.py:159 [>] -> >=
+  [ 29/52] morta       risk/validators.py:167 [>] -> >=
+  [ 30/52] morta       risk/validators.py:176 [<] -> <=
+  [ 31/52] morta       risk/validators.py:182 [==] -> !=
+  [ 32/52] morta       risk/validators.py:182 [and] -> or
+  [ 33/52] morta       risk/validators.py:182 [>=] -> >
+  [ 34/52] morta       risk/validators.py:184 [==] -> !=
+  [ 35/52] morta       risk/validators.py:184 [and] -> or
+  [ 36/52] morta       risk/validators.py:184 [<=] -> <
+  [ 37/52] morta       risk/validators.py:191 [==] -> !=
+  [ 38/52] morta       risk/validators.py:191 [and] -> or
+  [ 39/52] morta       risk/validators.py:191 [<=] -> <
+  [ 40/52] morta       risk/validators.py:196 [==] -> !=
+  [ 41/52] morta       risk/validators.py:196 [and] -> or
+  [ 42/52] morta       risk/validators.py:196 [>=] -> >
+  [ 43/52] morta       risk/validators.py:206 [>] -> >=
+  [ 44/52] morta       risk/validators.py:236 [<=] -> <
+  [ 45/52] morta       risk/policy.py:52 [<=] -> <
+  [ 46/52] morta       risk/policy.py:54 [>] -> >=
+  [ 47/52] morta       risk/policy.py:60 [>] -> >=
+  [ 48/52] morta       risk/policy.py:64 [>] -> >=
+  [ 49/52] morta       risk/policy.py:66 [<] -> <=
+  [ 50/52] morta       risk/policy.py:68 [<] -> <=
+  [ 51/52] morta       risk/policy.py:70 [<] -> <=
+  [ 52/52] morta       risk/policy.py:84 [==] -> !=
+
+score: 100.0% (52 mortas / 52)
+
+GATE OK: 100.0% >= 90%

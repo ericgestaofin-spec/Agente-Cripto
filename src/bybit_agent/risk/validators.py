@@ -145,7 +145,10 @@ def _symbol(_a: AccountState, c: TradeContext, p: RiskPolicy) -> Rejection | Non
 
 
 def _stale(a: AccountState, _c: TradeContext, p: RiskPolicy) -> Rejection | None:
-    if a.data_age_ms >= p.max_data_age_ms:
+    # `>` e não `>=`: max_data_age_ms é o máximo PERMITIDO, então idade
+    # exatamente no limite é aceita; só acima é stale. Consistente com
+    # _spread e _slippage, que são thresholds de mesma natureza.
+    if a.data_age_ms > p.max_data_age_ms:
         return Rejection(
             "DATA_STALE", f"dados com {a.data_age_ms}ms > máximo {p.max_data_age_ms}ms"
         )

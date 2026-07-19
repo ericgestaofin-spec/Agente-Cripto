@@ -162,7 +162,8 @@ def parse_instrument(payload: dict[str, Any]) -> InstrumentSpec:
 class BybitPublicClient:
     """Cliente REST assíncrono para dados de mercado públicos. Sem auth."""
 
-    def __init__(self, base_url: str = MAINNET, timeout: float = 15.0) -> None:
+    def __init__(self, base_url: str = MAINNET, timeout: float = 15.0) -> None:  # noqa: no-float
+        # timeout em segundos (rede), não é valor monetário
         self._base = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
 

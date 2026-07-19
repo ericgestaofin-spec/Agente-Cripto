@@ -32,11 +32,16 @@ levanta exceção, aceita lixo, ou passa silenciosamente.
 | 5c | `NaN` entra em campo `Decimal` cru | ✅ | corrigir |
 | 12 | `InstrumentSpec` aceita `tickSize=NaN`, `maxMktOrderQty=-1` | ✅ | corrigir |
 | 13 | `frozen` é superficial: `list` mutável pode ser alterada | ✅ | corrigir |
-| 11 | Política aceita limites absurdos (total 50%, leverage 1000x) | ✅ | corrigir |
-| 15 | Rebate de taxa negativo reduziria o risco (usar `max(fee,0)`) | analítico | corrigir |
-| 14 | Cálculos principais fora do `localcontext` com traps | parcial | corrigir (robustez) |
-| — | Fração de TP individual (`0<f≤1`) não validada; `[-0.5, 1.5]` passa | ✅ | corrigir |
-| — | `invalidation` está no contexto mas nenhum validador a usa | ✅ | corrigir |
+| 11 | Política aceita limites absurdos (total 50%, leverage 1000x) | ✅ | **✔ A2** — tetos absolutos `_HARD_MAX_*` |
+| 15 | Rebate de taxa negativo reduziria o risco (usar `max(fee,0)`) | analítico | **✔ A2** — `max(fee, 0)` |
+| 14 | Cálculos principais fora do `localcontext` com traps | parcial | **✔ A2** — `compute_size` sob `localcontext` |
+| — | Fração de TP individual (`0<f≤1`) não validada; `[-0.5, 1.5]` passa | ✅ | **✔ A1** |
+| — | `invalidation` está no contexto mas nenhum validador a usa | ✅ | **✔ A2** — validador `_invalidation_coherence` |
+
+**A1 (commitado 68382dd):** 5a, 5b, 5c, 12, 13 + frações de TP.
+**A2:** 11, 15, 14, invalidation + aperto da invariante P4 (removida a
+tolerância de um qtyStep — a versão estrita `q·entry ≤ equity·leverage` se
+sustenta em 1000+ casos). 100% de branch e (em verificação) mutation.
 
 ### Categoria B — o modelo tem autoridade indevida sobre risco (violação do princípio central)
 

@@ -226,6 +226,33 @@ def _stop_side(_a: AccountState, c: TradeContext, _p: RiskPolicy) -> Rejection |
     return None
 
 
+def _invalidation_coherence(
+    _a: AccountState, c: TradeContext, _p: RiskPolicy
+) -> Rejection | None:
+    """A invalidação é o preço em que a tese morre. Deve ser coerente com
+    a direção, e o stop deve estar em/além dela (proteger quando a tese
+    quebra), não entre a invalidação e a entrada.
+
+    LONG:  stop <= invalidação < entrada
+    SHORT: entrada < invalidação <= stop
+    """
+    if c.side == "BUY":
+        if not (c.stop <= c.invalidation < c.entry):
+            return Rejection(
+                "INVALIDATION_INCOHERENT",
+                f"LONG requer stop {c.stop} <= invalidação {c.invalidation} "
+                f"< entrada {c.entry}",
+            )
+    else:  # SELL
+        if not (c.entry < c.invalidation <= c.stop):
+            return Rejection(
+                "INVALIDATION_INCOHERENT",
+                f"SHORT requer entrada {c.entry} < invalidação {c.invalidation} "
+                f"<= stop {c.stop}",
+            )
+    return None
+
+
 def _stop_liquidation(_a: AccountState, c: TradeContext, _p: RiskPolicy) -> Rejection | None:
     """LONG: stop não pode estar em/abaixo da liquidação. SHORT: em/acima."""
     if c.side == "BUY" and c.stop <= c.liquidation:
@@ -295,6 +322,7 @@ _VALIDATORS: tuple[_Validator, ...] = (
     _slippage,
     _rr,
     _stop_side,
+    _invalidation_coherence,
     _stop_liquidation,
     _tp_fractions,
     _averaging_down,

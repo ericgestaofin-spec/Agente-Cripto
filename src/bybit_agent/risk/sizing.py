@@ -11,11 +11,16 @@ determinística de suas entradas.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Literal
 
 from bybit_agent.domain.instrument import InstrumentSpec, OrderType
-from bybit_agent.domain.money import Price, Quantity, round_down_to_step
+from bybit_agent.domain.money import (
+    Price,
+    Quantity,
+    decimal_context,
+    round_down_to_step,
+)
 
 BindingConstraint = Literal[
     "risk_budget", "leverage", "liquidity", "symbol_max", "none"
@@ -62,10 +67,18 @@ def _rejected(reason: str, *, risk_per_unit: Decimal, budget: Decimal) -> Sizing
 def compute_size(inp: SizingInputs) -> SizingResult:
     """Calcula a quantidade máxima permitida pelo risco e pelos tetos.
 
+    Todo o cálculo roda sob o contexto Decimal do sistema (prec=28, traps
+    de InvalidOperation/DivisionByZero). Isso torna o resultado imune a um
+    contexto Decimal global hostil — determinismo não pode depender de
+    estado externo — e ativa as traps onde o dinheiro é calculado.
+
     Retorna sempre um SizingResult — aprovação ou rejeição com motivo.
-    Nunca levanta exceção por entrada de mercado válida; erros de
-    configuração (spec inconsistente) podem levantar.
     """
+    with localcontext(decimal_context()):
+        return _compute_size(inp)
+
+
+def _compute_size(inp: SizingInputs) -> SizingResult:
     # Entrada não-positiva não é intenção de mercado válida — rejeita em vez
     # de deixar a divisão por entry levantar. Honra o contrato "sempre
     # retorna SizingResult".
@@ -93,8 +106,11 @@ def compute_size(inp: SizingInputs) -> SizingResult:
             budget=budget,
         )
 
-    # Taxa incide na entrada e na saída (ida e volta).
-    fee_per_unit = (inp.entry.value + inp.stop.value) * inp.taker_fee_rate
+    # Taxa incide na entrada e na saída (ida e volta). Um rebate de maker
+    # (taxa negativa) NÃO pode reduzir o risco calculado e inflar a posição —
+    # para sizing, a taxa efetiva é sempre >= 0 (conservador).
+    effective_fee_rate = max(inp.taker_fee_rate, Decimal("0"))
+    fee_per_unit = (inp.entry.value + inp.stop.value) * effective_fee_rate
     risk_per_unit = distance + fee_per_unit + inp.estimated_slippage.value
 
     # Guarda defensiva: com distance > 0 (garantido acima) e taxas/slippage

@@ -149,8 +149,10 @@ def test_P4_quantity_respects_all_caps(inp: SizingInputs) -> None:
     assume(r.approved)
     assert r.quantity is not None
     q = r.quantity.value
-    # exposição / alavancagem
-    assert q * inp.entry.value <= inp.equity.value * inp.max_leverage + inp.spec.qty_step * inp.entry.value
+    # exposição / alavancagem — invariante ESTRITA. Como a quantidade é
+    # arredondada para baixo e o teto de alavancagem é um dos mínimos,
+    # o notional nunca excede equity*max_leverage. Sem folga de qtyStep.
+    assert q * inp.entry.value <= inp.equity.value * inp.max_leverage
     # liquidez
     assert q <= inp.available_liquidity.value
     # símbolo

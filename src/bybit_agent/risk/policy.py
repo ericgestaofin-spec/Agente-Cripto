@@ -22,9 +22,18 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-# Teto de sanidade: acima disso, é erro de digitação, não estratégia.
-# 0,25 no lugar de 0,0025 é o erro que apaga a conta num único trade.
-_MAX_PLAUSIBLE_RISK_PER_TRADE = Decimal("0.05")
+# Tetos absolutos de sanidade, NÃO configuráveis. Acima disso é erro de
+# digitação ou configuração, não estratégia — 0,25 no lugar de 0,0025 é o
+# erro que apaga a conta num único trade; leverage 1000 idem. Estes limites
+# existem para pegar a configuração absurda que passaria por revisão humana
+# distraída, não para restringir estratégia legítima.
+_MAX_PLAUSIBLE_RISK_PER_TRADE = Decimal("0.05")   # 5%
+_HARD_MAX_TOTAL_RISK = Decimal("0.10")            # 10%
+_HARD_MAX_DAILY_LOSS = Decimal("0.10")            # 10%
+_HARD_MAX_WEEKLY_LOSS = Decimal("0.30")           # 30%
+_HARD_MAX_LEVERAGE = Decimal("20")
+_HARD_MAX_SPREAD_BPS = Decimal("100")
+_HARD_MAX_SLIPPAGE_BPS = Decimal("100")
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +58,17 @@ class RiskPolicy:
         self._validate()
 
     def _validate(self) -> None:
+        # Finitude primeiro: NaN/Infinity num limite de risco passaria por
+        # qualquer comparação escrita de forma ingênua.
+        for name in (
+            "max_risk_per_trade", "max_total_risk", "max_daily_loss",
+            "max_weekly_loss", "max_leverage", "min_rr_net",
+            "max_spread_bps", "max_slippage_bps",
+        ):
+            v = getattr(self, name)
+            if not v.is_finite():
+                raise ValueError(f"{name} deve ser finito, recebido {v!r}")
+
         if self.max_risk_per_trade <= 0:
             raise ValueError("max_risk_per_trade deve ser positivo")
         if self.max_risk_per_trade > _MAX_PLAUSIBLE_RISK_PER_TRADE:
@@ -61,10 +81,38 @@ class RiskPolicy:
             raise ValueError(
                 "risco por operação não pode exceder o risco total simultâneo"
             )
+        if self.max_total_risk > _HARD_MAX_TOTAL_RISK:
+            raise ValueError(
+                f"max_total_risk implausível ({self.max_total_risk}); "
+                f"teto de sanidade é {_HARD_MAX_TOTAL_RISK}"
+            )
         if self.max_daily_loss > self.max_weekly_loss:
             raise ValueError("perda diária não pode exceder a perda semanal")
+        if self.max_daily_loss > _HARD_MAX_DAILY_LOSS:
+            raise ValueError(
+                f"perda diária implausível ({self.max_daily_loss}); "
+                f"teto de sanidade é {_HARD_MAX_DAILY_LOSS}"
+            )
+        if self.max_weekly_loss > _HARD_MAX_WEEKLY_LOSS:
+            raise ValueError(
+                f"perda semanal implausível ({self.max_weekly_loss}); "
+                f"teto de sanidade é {_HARD_MAX_WEEKLY_LOSS}"
+            )
         if self.max_leverage < 1:
             raise ValueError("alavancagem máxima deve ser >= 1")
+        if self.max_leverage > _HARD_MAX_LEVERAGE:
+            raise ValueError(
+                f"alavancagem implausível ({self.max_leverage}); "
+                f"teto de sanidade é {_HARD_MAX_LEVERAGE}"
+            )
+        if self.max_spread_bps < 0 or self.max_spread_bps > _HARD_MAX_SPREAD_BPS:
+            raise ValueError(
+                f"max_spread_bps fora da faixa [0, {_HARD_MAX_SPREAD_BPS}]"
+            )
+        if self.max_slippage_bps < 0 or self.max_slippage_bps > _HARD_MAX_SLIPPAGE_BPS:
+            raise ValueError(
+                f"max_slippage_bps fora da faixa [0, {_HARD_MAX_SLIPPAGE_BPS}]"
+            )
         if self.min_rr_net < 1:
             raise ValueError("relação risco/retorno mínima deve ser >= 1")
         if self.max_concurrent_positions < 1:

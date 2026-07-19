@@ -1,0 +1,35 @@
+# Segredos — NUNCA versionar
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Testes e cobertura
+.pytest_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+.mutmut-cache
+.mypy_cache/
+.ruff_cache/
+
+# Dados brutos de spike (o relatório .md é versionado; o dump não)
+docs/spikes/raw/
+
+# IDE / SO
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

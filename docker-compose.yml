@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bybit_agent_db
+    environment:
+      POSTGRES_DB: bybit_agent
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_only_never_in_prod}
+      # Dinheiro é NUMERIC. Locale fixo evita surpresa de separador decimal.
+      LANG: C
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d bybit_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Banco separado para testes de integração — nunca compartilha estado
+  # com o de desenvolvimento. Um teste que trunca tabelas não pode
+  # destruir o histórico de eventos local.
+  postgres_test:
+    image: postgres:16-alpine
+    container_name: bybit_agent_db_test
+    environment:
+      POSTGRES_DB: bybit_agent_test
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: test
+      LANG: C
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data  # em memória: rápido e descartável
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d bybit_agent_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bybit-agent.local/contracts/decision_v1.json",
+  "title": "Decisão do agente — v1",
+  "description": "Saída do Claude Opus 4.8, garantida por output_config.format. Faixas numéricas (0<=close_fraction<=1, 0<=quality_score<=100) NÃO são expressáveis aqui — a API ignora minimum/maximum. São validadas pelo Risk Engine em Decimal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_id",
+    "timestamp",
+    "symbol",
+    "action",
+    "data_quality",
+    "market_regime",
+    "setup",
+    "entry",
+    "risk_plan",
+    "cancellation_conditions",
+    "reason_codes",
+    "summary"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID desta decisão. Chave de correlação em todo o event log."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC."
+    },
+    "symbol": {
+      "type": "string",
+      "enum": ["BTCUSDT"],
+      "description": "Travado por enum: a v0 opera um único símbolo."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "NO_TRADE",
+        "WATCH",
+        "OPEN_LONG",
+        "OPEN_SHORT",
+        "ADJUST_STOP",
+        "TAKE_PARTIAL",
+        "CLOSE_POSITION",
+        "HALT_TRADING"
+      ],
+      "description": "Ação única. A decisão padrão é NO_TRADE."
+    },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "snapshot_age_ms", "issues"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["VALID", "STALE", "INCOMPLETE", "CONFLICTING"]
+        },
+        "snapshot_age_ms": {
+          "type": "integer",
+          "description": "Idade dos dados. O Risk Engine rejeita acima da política."
+        },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "market_regime": {
+      "type": "string",
+      "enum": [
+        "TRENDING_UP",
+        "TRENDING_DOWN",
+        "RANGE",
+        "HIGH_VOLATILITY",
+        "LOW_LIQUIDITY",
+        "TRANSITION",
+        "UNKNOWN"
+      ]
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "timeframe",
+        "direction",
+        "quality_score",
+        "evidence_for",
+        "evidence_against"
+      ],
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "timeframe": { "type": ["string", "null"] },
+        "direction": { "type": "string", "enum": ["LONG", "SHORT", "NONE"] },
+        "quality_score": {
+          "type": "integer",
+          "description": "0-100. Faixa validada em código, não no schema."
+        },
+        "evidence_for": { "type": "array", "items": { "type": "string" } },
+        "evidence_against": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Vazio aqui é sinal de análise superficial."
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "price",
+        "price_min",
+        "price_max",
+        "confirmation",
+        "expires_at"
+      ],
+      "properties": {
+        "type": { "type": "string", "enum": ["MARKET", "LIMIT", "STOP", "NONE"] },
+        "price": { "type": ["string", "null"] },
+        "price_min": { "type": ["string", "null"] },
+        "price_max": { "type": ["string", "null"] },
+        "confirmation": {
+          "type": ["string", "null"],
+          "description": "Condição objetiva monitorada por código determinístico."
+        },
+        "expires_at": {
+          "type": ["string", "null"],
+          "description": "Sinal expirado exige nova análise; nunca é reativado."
+        }
+      }
+    },
+    "risk_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invalidation_price",
+        "stop_loss",
+        "take_profit_levels",
+        "estimated_rr_gross",
+        "estimated_rr_net",
+        "maximum_slippage_bps"
+      ],
+      "properties": {
+        "invalidation_price": {
+          "type": ["string", "null"],
+          "description": "Preço em que a tese deixa de ser válida."
+        },
+        "stop_loss": {
+          "type": ["string", "null"],
+          "description": "Sugestão. O Risk Engine recalcula e pode corrigir."
+        },
+        "take_profit_levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["price", "close_fraction", "reason"],
+            "properties": {
+              "price": { "type": "string" },
+              "close_fraction": {
+                "type": "string",
+                "description": "Decimal 0-1. Soma <= 1 validada em código."
+              },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "estimated_rr_gross": { "type": ["string", "null"] },
+        "estimated_rr_net": {
+          "type": ["string", "null"],
+          "description": "Pós taxas e slippage. É este que a política compara."
+        },
+        "maximum_slippage_bps": { "type": ["string", "null"] }
+      }
+    },
+    "cancellation_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Condições objetivas que invalidam o sinal antes da entrada."
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Códigos legíveis por máquina, para agregação por setup e regime."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Máx. 500 caracteres. Limite validado em código."
+    }
+  }
+}

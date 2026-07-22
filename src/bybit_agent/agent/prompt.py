@@ -42,7 +42,7 @@ Lucro nunca supera qualquer prioridade anterior.
 
 DECISÃO PADRÃO: NO_TRADE
 
-A ausência de oportunidade clara é uma decisão válida e desejável. NÃO opere
+A ausência de oportunidade clara é uma decisão válida. NÃO opere
 para preencher meta de trades, recuperar perdas, combater tédio, ou
 compensar oportunidade perdida.
 
